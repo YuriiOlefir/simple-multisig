@@ -5,6 +5,11 @@
         "internalType": "contract IERC20",
         "name": "_token",
         "type": "address"
+      },
+      {
+        "internalType": "address[]",
+        "name": "_members",
+        "type": "address[]"
       }
     ],
     "stateMutability": "nonpayable",
@@ -20,7 +25,7 @@
         "type": "uint256"
       }
     ],
-    "name": "appAccepted",
+    "name": "AppAccepted",
     "type": "event"
   },
   {
@@ -33,7 +38,7 @@
         "type": "uint256"
       }
     ],
-    "name": "appCanceled",
+    "name": "AppCanceled",
     "type": "event"
   },
   {
@@ -58,7 +63,7 @@
         "type": "uint8"
       }
     ],
-    "name": "appConfirmed",
+    "name": "AppConfirmed",
     "type": "event"
   },
   {
@@ -95,7 +100,7 @@
         "type": "uint256"
       }
     ],
-    "name": "appSubmitted",
+    "name": "AppSubmitted",
     "type": "event"
   },
   {
@@ -120,7 +125,7 @@
         "type": "uint8"
       }
     ],
-    "name": "confirmWithdrawn",
+    "name": "ConfirmWithdrawn",
     "type": "event"
   },
   {
@@ -204,12 +209,66 @@
         "type": "uint256"
       }
     ],
-    "name": "getAppConfirms",
+    "name": "getAppInfo",
     "outputs": [
       {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
         "internalType": "uint8",
-        "name": "",
+        "name": "numConfirms",
         "type": "uint8"
+      },
+      {
+        "internalType": "bool",
+        "name": "success",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "valid",
+        "type": "bool"
+      },
+      {
+        "internalType": "uint256",
+        "name": "endTime",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_addr",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_appId",
+        "type": "uint256"
+      }
+    ],
+    "name": "isConfirmedBy",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -218,19 +277,6 @@
   {
     "inputs": [],
     "name": "getBalance",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getCreationTime",
     "outputs": [
       {
         "internalType": "uint256",

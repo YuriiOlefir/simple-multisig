@@ -2,29 +2,33 @@ const Web3 = require("web3");
 const web3 = new Web3(Web3.givenProvider || "ws://localhost:8545");
 const { expect } = require("chai");
 const BigNumber = require("bignumber.js");
-const { constants } = require("@openzeppelin/test-helpers");
+const { constants, expectEvent, expectRevert, time } = require("@openzeppelin/test-helpers");
 const timeMachine = require("ganache-time-traveler");
-const truffleAssert = require("truffle-assertions");
 
-const MyToken = artifacts.require("MyToken");
+const MockERC20 = artifacts.require("ERC20PresetMinterPauserMock");
+const SimpleMultisig = artifacts.require("SimpleMultisig");
 
 BigNumber.config({ EXPONENTIAL_AT: 1e9 });
 
 describe("Testset for token properties", () => {
     let deployer;
-    let user1, user2;
+    let user2, user3, user4, user5;
+    let members = [];
+    const NUM_MEMBERS = 5;
 
     let token;
+    let multisig;
     let snapshotId;
 
     before(async () => {
-        [deployer, user1, user2] = await web3.eth.getAccounts();
+        [deployer, user2, user3, user4, user5] = await web3.eth.getAccounts();
+        members.push(deployer, user2, user3, user4, user5);
 
-        console.log(user1, user2);
-        token = await MyToken.new({ from: deployer });
+        token = await MockERC20.new("MyMockToken", "MMTKN", 18, { from: deployer });
+        multisig = await SimpleMultisig.new(token.address, members, { from: deployer });
     });
 
-    describe("Simple test", () => {
+    describe("Adding application test", () => {
         beforeEach(async () => {
             // Create a snapshot
             const snapshot = await timeMachine.takeSnapshot();
@@ -33,12 +37,10 @@ describe("Testset for token properties", () => {
 
         afterEach(async () => await timeMachine.revertToSnapshot(snapshotId));
 
-        it("Test supply", async () => {
-            expect((await token.totalSupply()).toNumber()).to.equal(0);
-        });
-
-        it("Cannot mint zero amount", async () => {
-            await truffleAssert.reverts(token.mint(0, { from: deployer }), "Incorrect amount");
+        it("Check users", async () => {
+            expect(await multisig.isMember(deployer), "Must be member").to.be.true;
+            expect(await multisig.isMember(user2), "Must be member").to.be.true;
+            expect(await multisig.isMember(user5), "Must be member").to.be.true;
         });
     });
 });
