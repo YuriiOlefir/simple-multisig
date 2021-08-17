@@ -26,15 +26,17 @@ contract SimpleMultisig {
     uint256 private numApps;
     mapping(uint256 => Application) private apps;
 
-    event AppSubmitted(address sender, address recipient, uint256 amount, uint256 appId, uint256 endTime);
+    event TokensTransferedToThis(address sender, uint256 amount);
 
-    event AppAccepted(uint256 appId);
+    event AppSubmitted(address sender, address recipient, uint256 amount, uint256 appID, uint256 endTime);
 
-    event AppCanceled(uint256 appId);
+    event AppAccepted(uint256 appID);
 
-    event AppConfirmed(address sender, uint256 appId, uint8 numConfirms);
+    event AppCanceled(uint256 appID);
 
-    event ConfirmWithdrawn(address sender, uint256 appId, uint8 numConfirms);
+    event AppConfirmed(address sender, uint256 appID, uint8 numConfirms);
+
+    event ConfirmWithdrawn(address sender, uint256 appID, uint8 numConfirms);
 
     constructor(IERC20 _token, address[] memory _members) {
         require(address(_token) != address(0), "Token zero address");
@@ -46,21 +48,32 @@ contract SimpleMultisig {
         }
     }
 
+    modifier nonzeroAmount(uint256 _amount) {
+        require(_amount != 0, "The amount of token must be greater than zero");
+        _;
+    }
+
     modifier onlyMember() {
         require(members[msg.sender], "Only a member can use this function");
         _;
     }
 
-    modifier validAppId(uint256 _appId) {
-        require(apps[_appId].numConfirms != 0, "Unknown application ID");
+    modifier validAppID(uint256 _appID) {
+        require(apps[_appID].numConfirms != 0, "Unknown application ID");
         _;
     }
 
-    modifier validApp(uint256 _appId) {
-        require(apps[_appId].valid, "This application is not valid");
-        require(!apps[_appId].success, "This application has already been applied");
-        require(block.timestamp <= apps[_appId].endTime, "This application is out of time");
+    modifier validApp(uint256 _appID) {
+        require(apps[_appID].valid, "This application is not valid");
+        require(!apps[_appID].success, "This application has already been applied");
+        require(block.timestamp <= apps[_appID].endTime, "This application is out of time");
         _;
+    }
+
+    /// @notice Отправка токенов на этот контракт
+    function transferToThis(uint256 _amount) external nonzeroAmount(_amount) {
+        //token.transfer(address(this), _amount);
+        emit TokensTransferedToThis(msg.sender, _amount);
     }
 
     /// @notice Подача заявления на рассылку токенов
@@ -68,15 +81,14 @@ contract SimpleMultisig {
     function submitApp(
         address _recipient,
         uint256 _amount,
-        uint8 _duration
-    ) external onlyMember returns (uint256 newAppId) {
+        uint256 _duration
+    ) external onlyMember nonzeroAmount(_amount) returns (uint256 newAppID) {
         require(_recipient != address(0), "Zero recipient address");
-        require(_amount != 0, "The amount of token must be greater than zero");
         require(_amount <= token.balanceOf(address(this)), "Not enough tokens");
         require(_duration > 0, "Zero duration of the application");
 
-        newAppId = numApps;
-        Application storage a = apps[newAppId];
+        newAppID = numApps;
+        Application storage a = apps[newAppID];
         a.sender = msg.sender;
         a.recipient = _recipient;
         a.amount = _amount;
@@ -86,36 +98,36 @@ contract SimpleMultisig {
         a.valid = true;
         a.endTime = block.timestamp + _duration;
         ++numApps;
-        emit AppSubmitted(msg.sender, _recipient, _amount, newAppId, a.endTime);
+        emit AppSubmitted(msg.sender, _recipient, _amount, newAppID, a.endTime);
     }
 
     /// @notice Подтверждение заявления
-    function confirmApp(uint256 _appId, bool _answerYes) external onlyMember validAppId(_appId) validApp(_appId) {
-        Application storage a = apps[_appId];
+    function confirmApp(uint256 _appID, bool _answerYes) external onlyMember validAppID(_appID) validApp(_appID) {
+        Application storage a = apps[_appID];
         require(!a.confirms[msg.sender], "You have already confirmed the application");
         if (_answerYes) {
             a.confirms[msg.sender] = true;
             ++a.numConfirms;
-            emit AppConfirmed(msg.sender, _appId, a.numConfirms);
+            emit AppConfirmed(msg.sender, _appID, a.numConfirms);
         }
-        if (a.numConfirms == THRESHOLD) acceptApp(_appId);
+        if (a.numConfirms == THRESHOLD) acceptApp(_appID);
     }
 
     /// @notice Отзыв подтверждения заявления
-    function withdrawConfirm(uint256 _appId) external onlyMember validAppId(_appId) validApp(_appId) {
-        Application storage a = apps[_appId];
+    function withdrawConfirm(uint256 _appID) external onlyMember validAppID(_appID) validApp(_appID) {
+        Application storage a = apps[_appID];
         require(a.confirms[msg.sender], "You have not confirmed the application yet");
         a.confirms[msg.sender] = false;
         --a.numConfirms;
-        emit ConfirmWithdrawn(msg.sender, _appId, a.numConfirms);
-        if (a.numConfirms == 0) cancelApp(_appId);
+        emit ConfirmWithdrawn(msg.sender, _appID, a.numConfirms);
+        if (a.numConfirms == 0) cancelApp(_appID);
     }
 
     /// @notice Получение данных заявления
-    function getAppInfo(uint256 _appId)
+    function getAppInfo(uint256 _appID)
         external
         view
-        validAppId(_appId)
+        validAppID(_appID)
         returns (
             address sender,
             address recipient,
@@ -126,14 +138,14 @@ contract SimpleMultisig {
             uint256 endTime
         )
     {
-        Application storage a = apps[_appId];
+        Application storage a = apps[_appID];
         return (a.sender, a.recipient, a.amount, a.numConfirms, a.success, a.valid, a.endTime);
     }
 
     /// @notice Проверка: подтвердил ли адрес заявление
-    function isConfirmedBy(address _addr, uint256 _appId) external view validAppId(_appId) returns (bool) {
+    function isConfirmedBy(address _addr, uint256 _appID) external view validAppID(_appID) returns (bool) {
         require(_addr != address(0), "Zero address");
-        if (apps[_appId].confirms[_addr]) return true;
+        if (apps[_appID].confirms[_addr]) return true;
         return false;
     }
 
@@ -149,21 +161,22 @@ contract SimpleMultisig {
     }
 
     /// Принятие заявления и рассылка токенов
-    function acceptApp(uint256 _appId) private {
-        Application storage a = apps[_appId];
+    function acceptApp(uint256 _appID) private {
+        Application storage a = apps[_appID];
         if (a.amount <= token.balanceOf(address(this))) {
-            token.transfer(a.recipient, a.amount);
             a.success = true;
-            emit AppAccepted(_appId);
+            //////token.transferFrom(address(this), a.recipient, a.amount);
+            //////////////token.transfer(a.recipient, a.amount);
+            emit AppAccepted(_appID);
         } else {
-            cancelApp(_appId);
+            cancelApp(_appID);
         }
     }
 
     /// Отмена заявления
-    function cancelApp(uint256 _appId) private {
-        Application storage a = apps[_appId];
+    function cancelApp(uint256 _appID) private {
+        Application storage a = apps[_appID];
         a.valid = false;
-        emit AppCanceled(_appId);
+        emit AppCanceled(_appID);
     }
 }
