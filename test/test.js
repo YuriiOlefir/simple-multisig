@@ -2,7 +2,6 @@ const Web3 = require("web3");
 const web3 = new Web3(Web3.givenProvider || "ws://localhost:8545");
 const { expect } = require("chai");
 const timeMachine = require("ganache-time-traveler");
-//const BigNumber = require("bignumber.js");
 const {
     BN,           // Big Number support
     constants,    // Common constants, like the zero address and largest integers
@@ -10,13 +9,9 @@ const {
     expectRevert, // Assertions for transactions that should fail
     time
 } = require("@openzeppelin/test-helpers");
-//const { ZERO_ADDRESS } = require("@openzeppelin/test-helpers/src/constants");
-//const { BN } = require("@openzeppelin/test-helpers/src/setup");
 
 const MockERC20 = artifacts.require("ERC20PresetMinterPauserMock");
 const SimpleMultisig = artifacts.require("SimpleMultisig");
-
-//BigNumber.config({ EXPONENTIAL_AT: 1e9 });
 
 describe("Testset for Simple Multisig", () => {
     let deployer;
