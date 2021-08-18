@@ -19,7 +19,7 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
         "name": "appID",
         "type": "uint256"
@@ -32,7 +32,7 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
         "name": "appID",
         "type": "uint256"
@@ -45,22 +45,22 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
         "name": "sender",
         "type": "address"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
         "name": "appID",
         "type": "uint256"
       },
       {
         "indexed": false,
-        "internalType": "uint8",
+        "internalType": "uint16",
         "name": "numConfirms",
-        "type": "uint8"
+        "type": "uint16"
       }
     ],
     "name": "AppConfirmed",
@@ -70,7 +70,7 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
         "name": "sender",
         "type": "address"
@@ -88,7 +88,7 @@
         "type": "uint256"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
         "name": "appID",
         "type": "uint256"
@@ -107,44 +107,25 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
         "name": "sender",
         "type": "address"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint256",
         "name": "appID",
         "type": "uint256"
       },
       {
         "indexed": false,
-        "internalType": "uint8",
+        "internalType": "uint16",
         "name": "numConfirms",
-        "type": "uint8"
+        "type": "uint16"
       }
     ],
-    "name": "ConfirmWithdrawn",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "sender",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "TokensTransferedToThis",
+    "name": "ConfirmRevoked",
     "type": "event"
   },
   {
@@ -158,19 +139,6 @@
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "_amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "transferToThis",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -208,11 +176,6 @@
         "internalType": "uint256",
         "name": "_appID",
         "type": "uint256"
-      },
-      {
-        "internalType": "bool",
-        "name": "_answerYes",
-        "type": "bool"
       }
     ],
     "name": "confirmApp",
@@ -228,7 +191,7 @@
         "type": "uint256"
       }
     ],
-    "name": "withdrawConfirm",
+    "name": "revokeConfirmation",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -245,11 +208,6 @@
     "outputs": [
       {
         "internalType": "address",
-        "name": "sender",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
         "name": "recipient",
         "type": "address"
       },
@@ -259,18 +217,13 @@
         "type": "uint256"
       },
       {
-        "internalType": "uint8",
+        "internalType": "uint16",
         "name": "numConfirms",
-        "type": "uint8"
+        "type": "uint16"
       },
       {
         "internalType": "bool",
-        "name": "success",
-        "type": "bool"
-      },
-      {
-        "internalType": "bool",
-        "name": "valid",
+        "name": "canceled",
         "type": "bool"
       },
       {
@@ -327,12 +280,31 @@
         "type": "address"
       }
     ],
-    "name": "isMember",
+    "name": "isSuchMember",
     "outputs": [
       {
         "internalType": "bool",
         "name": "",
         "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_appID",
+        "type": "uint256"
+      }
+    ],
+    "name": "getConfirms",
+    "outputs": [
+      {
+        "internalType": "uint16",
+        "name": "count",
+        "type": "uint16"
       }
     ],
     "stateMutability": "view",

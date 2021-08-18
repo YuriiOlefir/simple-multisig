@@ -2,181 +2,201 @@
 pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-/// @author Yurii
+/**
+ *  @title SimpleMultisig
+ *  @author Yurii
+ */
 contract SimpleMultisig {
-    /// Заявление на рассылку токенов
+    using SafeERC20 for IERC20;
+
+    /// @dev Application for the transfer of tokens
     struct Application {
-        address sender;
         address recipient;
         uint256 amount;
-        mapping(address => bool) confirms;
-        uint8 numConfirms;
-        bool success;
-        bool valid;
+        bool canceled;
         uint256 endTime;
     }
 
-    IERC20 public token;
+    /**
+     *  Constants
+     */
+    uint16 private constant NUM_MEMBERS = 5;
+    uint16 private constant THRESHOLD = 3;
 
-    uint8 private constant NUM_MEMBERS = 5;
-    mapping(address => bool) private members;
-    uint8 private constant THRESHOLD = 3;
+    /**
+     *  Storage
+     */
+    IERC20 public token;
 
     uint256 private numApps;
     mapping(uint256 => Application) private apps;
+    mapping(uint256 => mapping(address => bool)) private confirms;
+    mapping(address => bool) private isMember;
+    address[] private members;
 
-    event TokensTransferedToThis(address sender, uint256 amount);
+    /**
+     *  Events
+     */
+    event AppSubmitted(
+        address indexed sender,
+        address recipient,
+        uint256 amount,
+        uint256 indexed appID,
+        uint256 endTime
+    );
+    event AppAccepted(uint256 indexed appID);
+    event AppCanceled(uint256 indexed appID);
+    event AppConfirmed(address indexed sender, uint256 indexed appID, uint16 numConfirms);
+    event ConfirmRevoked(address indexed sender, uint256 indexed appID, uint16 numConfirms);
 
-    event AppSubmitted(address sender, address recipient, uint256 amount, uint256 appID, uint256 endTime);
-
-    event AppAccepted(uint256 appID);
-
-    event AppCanceled(uint256 appID);
-
-    event AppConfirmed(address sender, uint256 appID, uint8 numConfirms);
-
-    event ConfirmWithdrawn(address sender, uint256 appID, uint8 numConfirms);
-
+    /**
+     *  Constructor
+     */
     constructor(IERC20 _token, address[] memory _members) {
         require(address(_token) != address(0), "Token zero address");
         require(_members.length == NUM_MEMBERS, "Must be 5 members");
         token = _token;
-        for (uint256 i = 0; i < NUM_MEMBERS; ++i) {
-            require(_members[i] != address(0), "Member zero address");
-            members[_members[i]] = true;
+        for (uint16 i = 0; i < NUM_MEMBERS; ++i) {
+            require(!isMember[_members[i]], "Members must not repeat themselves or/and member can not be zero address");
+            isMember[_members[i]] = true;
+            members.push(_members[i]);
         }
     }
 
+    /**
+     *  Modifiers
+     */
     modifier nonzeroAmount(uint256 _amount) {
         require(_amount != 0, "The amount of token must be greater than zero");
         _;
     }
 
     modifier onlyMember() {
-        require(members[msg.sender], "Only a member can use this function");
+        require(isMember[msg.sender], "Only a member can use this function");
         _;
     }
 
-    modifier validAppID(uint256 _appID) {
-        require(apps[_appID].numConfirms != 0, "Unknown application ID");
+    modifier submittedApp(uint256 _appID) {
+        require(apps[_appID].recipient != address(0), "Unknown application ID");
         _;
     }
 
     modifier validApp(uint256 _appID) {
-        require(apps[_appID].valid, "This application is not valid");
-        require(!apps[_appID].success, "This application has already been applied");
+        require(!apps[_appID].canceled, "This application has been canceled");
         require(block.timestamp <= apps[_appID].endTime, "This application is out of time");
+        require(getConfirms(_appID) != THRESHOLD, "This application has already been applied");
         _;
     }
 
-    /// @notice Отправка токенов на этот контракт
-    function transferToThis(uint256 _amount) external nonzeroAmount(_amount) {
-        //token.transfer(address(this), _amount);
-        emit TokensTransferedToThis(msg.sender, _amount);
-    }
-
-    /// @notice Подача заявления на рассылку токенов
-    /// @param _duration Время жизни заявления в секундах
+    /**
+     *  External functions
+     */
+    /// @notice Submission of the application for the transfer of tokens
+    /// @param _duration Application lifetime in seconds
     function submitApp(
         address _recipient,
         uint256 _amount,
         uint256 _duration
     ) external onlyMember nonzeroAmount(_amount) returns (uint256 newAppID) {
         require(_recipient != address(0), "Zero recipient address");
+        require(_recipient != address(this), "The recipient's address matches the contract address");
+        require(_recipient != msg.sender, "The recipient's address matches the sender's address");
         require(_amount <= token.balanceOf(address(this)), "Not enough tokens");
         require(_duration > 0, "Zero duration of the application");
 
         newAppID = numApps;
         Application storage a = apps[newAppID];
-        a.sender = msg.sender;
         a.recipient = _recipient;
         a.amount = _amount;
-        a.confirms[msg.sender] = true;
-        a.numConfirms = 1;
-        //a.success = false;
-        a.valid = true;
         a.endTime = block.timestamp + _duration;
+        confirms[newAppID][msg.sender] = true;
         ++numApps;
         emit AppSubmitted(msg.sender, _recipient, _amount, newAppID, a.endTime);
     }
 
-    /// @notice Подтверждение заявления
-    function confirmApp(uint256 _appID, bool _answerYes) external onlyMember validAppID(_appID) validApp(_appID) {
-        Application storage a = apps[_appID];
-        require(!a.confirms[msg.sender], "You have already confirmed the application");
-        if (_answerYes) {
-            a.confirms[msg.sender] = true;
-            ++a.numConfirms;
-            emit AppConfirmed(msg.sender, _appID, a.numConfirms);
-        }
-        if (a.numConfirms == THRESHOLD) acceptApp(_appID);
+    /// @notice Confirmation of the application
+    function confirmApp(uint256 _appID) external onlyMember submittedApp(_appID) validApp(_appID) {
+        require(!confirms[_appID][msg.sender], "You have already confirmed the application");
+        confirms[_appID][msg.sender] = true;
+        uint16 numConfirms = getConfirms(_appID);
+        emit AppConfirmed(msg.sender, _appID, numConfirms);
+        if (numConfirms == THRESHOLD) _acceptApp(_appID);
     }
 
-    /// @notice Отзыв подтверждения заявления
-    function withdrawConfirm(uint256 _appID) external onlyMember validAppID(_appID) validApp(_appID) {
-        Application storage a = apps[_appID];
-        require(a.confirms[msg.sender], "You have not confirmed the application yet");
-        a.confirms[msg.sender] = false;
-        --a.numConfirms;
-        emit ConfirmWithdrawn(msg.sender, _appID, a.numConfirms);
-        if (a.numConfirms == 0) cancelApp(_appID);
+    /// @notice Revocation of confirmation of the application
+    function revokeConfirmation(uint256 _appID) external onlyMember submittedApp(_appID) validApp(_appID) {
+        require(confirms[_appID][msg.sender], "You have not confirmed the application yet");
+        confirms[_appID][msg.sender] = false;
+        uint16 numConfirms = getConfirms(_appID);
+        emit ConfirmRevoked(msg.sender, _appID, numConfirms);
+        if (numConfirms == 0) _cancelApp(_appID);
     }
 
-    /// @notice Получение данных заявления
+    /**
+     *  External view functions
+     */
+    /// @notice Receiving application data
     function getAppInfo(uint256 _appID)
         external
         view
-        validAppID(_appID)
+        submittedApp(_appID)
         returns (
-            address sender,
             address recipient,
             uint256 amount,
-            uint8 numConfirms,
-            bool success,
-            bool valid,
+            uint16 numConfirms,
+            bool canceled,
             uint256 endTime
         )
     {
-        Application storage a = apps[_appID];
-        return (a.sender, a.recipient, a.amount, a.numConfirms, a.success, a.valid, a.endTime);
+        Application memory a = apps[_appID];
+        return (a.recipient, a.amount, getConfirms(_appID), a.canceled, a.endTime);
     }
 
-    /// @notice Проверка: подтвердил ли адрес заявление
-    function isConfirmedBy(address _addr, uint256 _appID) external view validAppID(_appID) returns (bool) {
+    /// @notice Check: whether the address has confirmed the application
+    function isConfirmedBy(address _addr, uint256 _appID) external view submittedApp(_appID) returns (bool) {
         require(_addr != address(0), "Zero address");
-        if (apps[_appID].confirms[_addr]) return true;
+        if (confirms[_appID][_addr]) return true;
         return false;
     }
 
-    /// @notice Получение баланса токена
+    /// @notice Getting token balance
     function getBalance() external view returns (uint256) {
         return token.balanceOf(address(this));
     }
 
-    /// @notice Проверка: есть ли участник с таким адресом
-    function isMember(address _addr) external view returns (bool) {
+    /// @notice Check: is there a member with this address
+    function isSuchMember(address _addr) external view returns (bool) {
         require(_addr != address(0), "Zero address");
-        return members[_addr];
+        return isMember[_addr];
     }
 
-    /// Принятие заявления и рассылка токенов
-    function acceptApp(uint256 _appID) private {
+    /**
+     *  Public functions
+     */
+    /// @notice Getting the number of confirmations of the application
+    function getConfirms(uint256 _appID) public view returns (uint16 count) {
+        for (uint16 i = 0; i < NUM_MEMBERS; i++) if (confirms[_appID][members[i]]) ++count;
+    }
+
+    /**
+     *  Private functions
+     */
+    /// @dev Acceptance of the application and transfer of tokens
+    function _acceptApp(uint256 _appID) private {
         Application storage a = apps[_appID];
         if (a.amount <= token.balanceOf(address(this))) {
-            a.success = true;
-            //////token.transferFrom(address(this), a.recipient, a.amount);
-            //////////////token.transfer(a.recipient, a.amount);
+            token.safeTransfer(a.recipient, a.amount);
             emit AppAccepted(_appID);
         } else {
-            cancelApp(_appID);
+            _cancelApp(_appID);
         }
     }
 
-    /// Отмена заявления
-    function cancelApp(uint256 _appID) private {
-        Application storage a = apps[_appID];
-        a.valid = false;
+    /// @dev Cancellation of application
+    function _cancelApp(uint256 _appID) private {
+        apps[_appID].canceled = true;
         emit AppCanceled(_appID);
     }
 }
