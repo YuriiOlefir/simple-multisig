@@ -280,7 +280,7 @@
         "type": "address"
       }
     ],
-    "name": "isSuchMember",
+    "name": "isMember",
     "outputs": [
       {
         "internalType": "bool",

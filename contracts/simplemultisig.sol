@@ -33,7 +33,7 @@ contract SimpleMultisig {
     uint256 private numApps;
     mapping(uint256 => Application) private apps;
     mapping(uint256 => mapping(address => bool)) private confirms;
-    mapping(address => bool) private isMember;
+    mapping(address => bool) private mmembers;
     address[] private members;
 
     /**
@@ -59,8 +59,8 @@ contract SimpleMultisig {
         require(_members.length == NUM_MEMBERS, "Must be 5 members");
         token = _token;
         for (uint16 i = 0; i < NUM_MEMBERS; ++i) {
-            require(!isMember[_members[i]], "Members must not repeat themselves or/and member can not be zero address");
-            isMember[_members[i]] = true;
+            require(!mmembers[_members[i]], "Members must not repeat themselves or/and member can not be zero address");
+            mmembers[_members[i]] = true;
             members.push(_members[i]);
         }
     }
@@ -74,7 +74,7 @@ contract SimpleMultisig {
     }
 
     modifier onlyMember() {
-        require(isMember[msg.sender], "Only a member can use this function");
+        require(mmembers[msg.sender], "Only a member can use this function");
         _;
     }
 
@@ -167,9 +167,9 @@ contract SimpleMultisig {
     }
 
     /// @notice Check: is there a member with this address
-    function isSuchMember(address _addr) external view returns (bool) {
+    function isMember(address _addr) external view returns (bool) {
         require(_addr != address(0), "Zero address");
-        return isMember[_addr];
+        return mmembers[_addr];
     }
 
     /**
