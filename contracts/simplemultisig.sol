@@ -176,7 +176,7 @@ contract SimpleMultisig {
      *  Public functions
      */
     /// @notice Getting the number of confirmations of the application
-    function getConfirms(uint256 _appID) public view returns (uint16 count) {
+    function getConfirms(uint256 _appID) public view submittedApp(_appID) returns (uint16 count) {
         for (uint16 i = 0; i < NUM_MEMBERS; i++) if (confirms[_appID][members[i]]) ++count;
     }
 

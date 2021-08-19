@@ -86,13 +86,13 @@ describe("Testset for Simple Multisig", () => {
             );
         });
 
-        it("Check users and function isSuchMember()", async () => {
-            expect(await multisig.isSuchMember(deployer), "Should be member").to.be.true;
-            expect(await multisig.isSuchMember(member2), "Should be member").to.be.true;
-            expect(await multisig.isSuchMember(member5), "Should be member").to.be.true;
-            expect(await multisig.isSuchMember(user6), "Should not be member").to.be.false;
+        it("Check users and function isMember(...)", async () => {
+            expect(await multisig.isMember(deployer), "Should be member").to.be.true;
+            expect(await multisig.isMember(member2), "Should be member").to.be.true;
+            expect(await multisig.isMember(member5), "Should be member").to.be.true;
+            expect(await multisig.isMember(user6), "Should not be member").to.be.false;
             await expectRevert(
-                multisig.isSuchMember(constants.ZERO_ADDRESS),
+                multisig.isMember(constants.ZERO_ADDRESS),
                 "Zero address"
             );
         });
@@ -191,7 +191,7 @@ describe("Testset for Simple Multisig", () => {
             /**
              *  Function
              */
-            const firstAppID = 0;
+            const FIRST_APP_ID = 0;
             expect(
                 await multisig.submitApp.call(
                     user6,
@@ -200,7 +200,7 @@ describe("Testset for Simple Multisig", () => {
                     { from: member2 }
                 )
             )
-            .to.be.bignumber.equal(new BN(firstAppID));
+            .to.be.bignumber.equal(new BN(FIRST_APP_ID));
             expectEvent(
                 await multisig.submitApp(
                     user6,
@@ -213,7 +213,7 @@ describe("Testset for Simple Multisig", () => {
                     sender: member2,
                     recipient: user6,
                     amount: new BN(1000),
-                    appID: new BN(firstAppID),
+                    appID: new BN(FIRST_APP_ID),
                     endTime:
                         new BN(
                             +(await time.latest()) +
@@ -221,6 +221,230 @@ describe("Testset for Simple Multisig", () => {
                         )
                 }
             );
+            // Multiple submissions
+            const APP_ID = 1;
+            expect(
+                await multisig.submitApp.call(
+                    user6,
+                    new BN(1000),
+                    time.duration.days(new BN(3)),
+                    { from: member2 }
+                )
+            )
+            .to.be.bignumber.equal(new BN(APP_ID));
+        });
+
+        it("Add and revoke confirm for an application and getConfirms()", async () => {
+            await token.mint(multisig.address, new BN(100000), { from: deployer });
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(3)),
+                { from: member4 }
+            );
+            const FIRST_APP_ID = 0;
+            const SECOND_CONFIRM = 2;
+
+            // Confirm
+            await expectRevert(
+                multisig.confirmApp(+(new BN(FIRST_APP_ID)) + +1, { from: member3 }),
+                "Unknown application ID"
+            );
+            expectEvent(
+                await multisig.confirmApp(new BN(FIRST_APP_ID), { from: member3 }),
+                "AppConfirmed",
+                {
+                    sender: member3,
+                    appID: new BN(FIRST_APP_ID),
+                    numConfirms: new BN(SECOND_CONFIRM)
+                }
+            );
+            await expectRevert(
+                multisig.confirmApp.call(new BN(FIRST_APP_ID), { from: member3 }),
+                "You have already confirmed the application"
+            );
+            expect(await multisig.getConfirms(new BN(FIRST_APP_ID), { from: member2 }))
+            .to.be.bignumber.equal(new BN(2));
+            // Revoke confirm
+            await expectRevert(
+                multisig.revokeConfirmation(new BN(FIRST_APP_ID), { from: member2 }),
+                "You have not confirmed the application yet"
+            );
+            expectEvent(
+                await multisig.revokeConfirmation(new BN(FIRST_APP_ID), { from: member3 }),
+                "ConfirmRevoked",
+                {
+                    sender: member3,
+                    appID: new BN(FIRST_APP_ID),
+                    numConfirms: new BN(+SECOND_CONFIRM - +1)
+                }
+            );
+            expect(await multisig.getConfirms(new BN(FIRST_APP_ID), { from: member2 }))
+            .to.be.bignumber.equal(new BN(1));
+            // The second application adding and confirm it
+            await multisig.submitApp(
+                member4,
+                new BN(100),
+                time.duration.days(new BN(2)),
+                { from: member2 }
+            );
+            await multisig.confirmApp(new BN(+FIRST_APP_ID + +1), { from: member3 });
+            expect(await multisig.getConfirms(new BN(+FIRST_APP_ID + +1), { from: member2 }))
+            .to.be.bignumber.equal(new BN(2));
+        });
+
+        it("Accept an application and transfer tokens", async () => {
+            await token.mint(multisig.address, new BN(100000), { from: deployer });
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(3)),
+                { from: member4 }
+            );
+            const FIRST_APP_ID = 0;
+
+            await multisig.confirmApp(new BN(FIRST_APP_ID), { from: member3 });
+            expectEvent(
+                await multisig.confirmApp(new BN(FIRST_APP_ID), { from: deployer }),
+                "AppConfirmed",
+                {
+                    sender: deployer,
+                    appID: new BN(FIRST_APP_ID),
+                    numConfirms: new BN(3)
+                }
+            );
+            // Transfer check
+            expect(await token.balanceOf(multisig.address)).to.be.bignumber.equal(new BN(99000));
+            expect(await token.balanceOf(member3)).to.be.bignumber.equal(new BN(1000));
+
+            await expectRevert(
+                multisig.confirmApp(new BN(FIRST_APP_ID), { from: member2 }),
+                "This application has already been applied"
+            );
+
+            // emit AppAccepted() checking
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(3)),
+                { from: member4 }
+            );
+            const SECOND_APP_ID = +FIRST_APP_ID + +1;
+            await multisig.confirmApp(new BN(SECOND_APP_ID), { from: member3 });
+            expectEvent(
+                await multisig.confirmApp(new BN(SECOND_APP_ID), { from: deployer }),
+                "AppAccepted",
+                { appID: new BN(SECOND_APP_ID) }
+            );
+        });
+
+        it("The application is out of time cheking", async () => {
+            await token.mint(multisig.address, new BN(100000), { from: deployer });
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(1)),
+                { from: member4 }
+            );
+            const FIRST_APP_ID = 0;
+            time.increase(time.duration.days(new BN(2)));
+            await expectRevert(
+                multisig.confirmApp(new BN(FIRST_APP_ID), { from: member3 }),
+                "This application is out of time"
+            );
+        });
+
+        it("Cancel an application", async () => {
+            await token.mint(multisig.address, new BN(100000), { from: deployer });
+
+            // From function revokeConfirmation()
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(1)),
+                { from: member4 }
+            );
+            const FIRST_APP_ID = 0;
+            await multisig.confirmApp(new BN(FIRST_APP_ID), { from: member3 });
+            await multisig.revokeConfirmation(new BN(FIRST_APP_ID), { from: member4 });
+            expectEvent(
+                await multisig.revokeConfirmation(new BN(FIRST_APP_ID), { from: member3 }),
+                "AppCanceled",
+                { appID: new BN(FIRST_APP_ID) }
+            );
+
+            // Cancellation due to lack of tokens
+            await multisig.submitApp(
+                member3,
+                new BN(99500),
+                time.duration.days(new BN(1)),
+                { from: member4 }
+            );
+            const SECOND_APP_ID = 1;
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(1)),
+                { from: member4 }
+            );
+            const THIRD_ADD_ID = 2;
+            // The second application accept
+            await multisig.confirmApp(new BN(SECOND_APP_ID), { from: member3 });
+            await multisig.confirmApp(new BN(SECOND_APP_ID), { from: member2 });
+            // The third application try to accept, but lack of tokens
+            expect(await token.balanceOf(multisig.address)).to.be.bignumber.equal(new BN(500));
+            await multisig.confirmApp(new BN(THIRD_ADD_ID), { from: member3 });
+            expectEvent(
+                await multisig.confirmApp(new BN(THIRD_ADD_ID), { from: member2 }),
+                "AppCanceled",
+                { appID: new BN(THIRD_ADD_ID) }
+            );
+
+            // Try confirm the application when it was canceled
+            await expectRevert(
+                multisig.confirmApp(new BN(THIRD_ADD_ID), { from: deployer }),
+                "This application has been canceled"
+            );
+        });
+
+        it("Function isConfirmedBy(...) check", async () => {
+            await token.mint(multisig.address, new BN(100000), { from: deployer });
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(1)),
+                { from: member4 }
+            );
+            const FIRST_APP_ID = 0;
+            await multisig.confirmApp(new BN(FIRST_APP_ID), { from: member3 });
+            expect(await multisig.isConfirmedBy(member4, new BN(FIRST_APP_ID), { from: deployer })).to.be.true;
+            await expectRevert(
+                multisig.isConfirmedBy(constants.ZERO_ADDRESS, new BN(FIRST_APP_ID), { from: deployer }),
+                "Zero address"
+            );
+            expect(await multisig.isConfirmedBy(member3, new BN(FIRST_APP_ID), { from: deployer })).to.be.true;
+            expect(await multisig.isConfirmedBy(member2, new BN(FIRST_APP_ID), { from: deployer })).to.be.false;
+        });
+
+        it("Function getAppInfo(...) check", async () => {
+            await token.mint(multisig.address, new BN(100000), { from: deployer });
+            await multisig.submitApp(
+                member3,
+                new BN(1000),
+                time.duration.days(new BN(1)),
+                { from: member4 }
+            );
+            let tempTime = await time.latest();
+            const FIRST_APP_ID = 0;
+            const CONFIRMS = 1;
+            let tempAppInfo = await multisig.getAppInfo(new BN(FIRST_APP_ID));
+            expect(
+                tempAppInfo[0] == member3 &&
+                tempAppInfo[1] == 1000 &&
+                tempAppInfo[2] == CONFIRMS &&
+                tempAppInfo[3] == false &&
+                (tempAppInfo[4]).toString() == (new BN(+(tempTime) + +(time.duration.days(new BN(1))))).toString()
+            ).to.be.true;
         });
     });
 });
